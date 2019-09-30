@@ -2,6 +2,7 @@ package com.rnim.rn.audio;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -204,6 +205,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     isPaused = false;
     startTimer();
     promise.resolve(currentOutputFile);
+    bringToForeground();
   }
 
   @ReactMethod
@@ -261,6 +263,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     result.putString("base64", base64);
 
     sendEvent("recordingFinished", result);
+    removeFromForeground();
   }
 
   @ReactMethod
@@ -283,6 +286,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
 
     isPaused = true;
     promise.resolve(null);
+    removeFromForeground();
   }
 
   @ReactMethod
@@ -305,6 +309,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     
     isPaused = false;
     promise.resolve(null);
+    bringToForeground();
   }
 
   private void startTimer(){
@@ -338,5 +343,25 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   private void logAndRejectPromise(Promise promise, String errorCode, String errorMessage) {
     Log.e(TAG, errorMessage);
     promise.reject(errorCode, errorMessage);
+  }
+
+  private void bringToForeground() {
+    Intent intent =
+        KeepAliveService.getIntent(context, KeepAliveService.COMMAND_START);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      context.startForegroundService(intent);
+    } else {
+      context.startService(intent);
+    }
+  }
+
+  private void removeFromForeground() {
+    Intent intent =
+        KeepAliveService.getIntent(context, KeepAliveService.COMMAND_STOP);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      context.startForegroundService(intent);
+    } else {
+      context.startService(intent);
+    }
   }
 }

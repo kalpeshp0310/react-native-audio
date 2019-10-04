@@ -217,6 +217,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
 
     stopTimer();
     isRecording = false;
+    boolean wasPaused = isPaused;
     isPaused = false;
 
     try {
@@ -263,7 +264,9 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     result.putString("base64", base64);
 
     sendEvent("recordingFinished", result);
-    removeFromForeground();
+    if (!wasPaused) {
+      removeFromForeground();
+    }
   }
 
   @ReactMethod

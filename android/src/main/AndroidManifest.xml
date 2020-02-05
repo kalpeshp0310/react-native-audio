@@ -1,4 +1,7 @@
-<manifest package="com.rnim.rn.audio">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.rnim.rn.audio">
 
-  <application></application>
+  <application>
+    <service android:name="com.rnim.rn.audio.KeepAliveService" />
+  </application>
 </manifest>

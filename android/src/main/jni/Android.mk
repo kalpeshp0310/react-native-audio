@@ -19,4 +19,4 @@ LOCAL_CFLAGS += -D_REENTRANT -DPIC -DU_COMMON_IMPLEMENTATION -fPIC -DHAVE_SYS_PA
 LOCAL_CFLAGS += -O3 -funroll-loops -finline-functions
 
 LOCAL_LDLIBS := -llog -lz -lm
-include $(BUILD_STATIC_LIBRARY)
+include $(BUILD_SHARED_LIBRARY)

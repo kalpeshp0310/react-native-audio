@@ -34,3 +34,5 @@ android/gradle/
 android/gradlew
 android/gradlew.bat
 .idea
+android/.gradle/
+android/android.iml

@@ -72,8 +72,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       destFile.getParentFile().mkdirs();
     }
     audioMeta =
-        new AudioMeta(recordingSettings.getInt("SampleRate"), recordingSettings.getInt("Channels"),
-            16);
+        new AudioMeta(recordingSettings.getInt("SampleRate"), 1, 16);
 
     currentOutputFilePath = recordingPath;
     currentOutputFile = new File(currentOutputFilePath);

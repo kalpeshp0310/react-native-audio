@@ -3,43 +3,33 @@ package com.rnim.rn.audio;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
-
+import android.content.pm.PackageManager;
+import android.media.MediaRecorder;
+import android.os.Build;
+import android.os.Environment;
+import android.util.Base64;
+import android.util.Log;
+import androidx.core.content.ContextCompat;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-
-import com.facebook.react.bridge.Arguments;
-import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
-
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
-
-import android.content.pm.PackageManager;
-import android.os.Build;
-import android.os.Environment;
-import android.media.MediaRecorder;
-import android.media.AudioManager;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.util.Base64;
-import android.util.Log;
-import com.facebook.react.modules.core.DeviceEventManagerModule;
-
-import java.io.FileInputStream;
-
-import java.lang.reflect.Method;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.IllegalAccessException;
-import java.lang.NoSuchMethodException;
 
 class AudioRecorderManager extends ReactContextBaseJavaModule {
 
@@ -111,14 +101,15 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void prepareRecordingAtPath(String recordingPath, ReadableMap recordingSettings, Promise promise) {
-    if (isRecording){
+    if (isRecording) {
       logAndRejectPromise(promise, "INVALID_STATE", "Please call stopRecording before starting recording");
+      return;
     }
     File destFile = new File(recordingPath);
     if (destFile.getParentFile() != null) {
       destFile.getParentFile().mkdirs();
     }
-    recorder = new MediaRecorder();
+    MediaRecorder recorder = new MediaRecorder();
     try {
       recorder.setAudioSource(recordingSettings.getInt("AudioSource"));
       int outputFormat = getOutputFormatFromString(recordingSettings.getString("OutputFormat"));
@@ -132,15 +123,23 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       includeBase64 = recordingSettings.getBoolean("IncludeBase64");
     }
     catch(final Exception e) {
+      try{
+        recorder.release();
+      } catch (Exception ignored) { }
       logAndRejectPromise(promise, "COULDNT_CONFIGURE_MEDIA_RECORDER" , "Make sure you've added RECORD_AUDIO permission to your AndroidManifest.xml file "+e.getMessage());
       return;
     }
 
-    currentOutputFile = recordingPath;
     try {
       recorder.prepare();
+      currentOutputFile = recordingPath;
+      this.recorder = recorder;
       promise.resolve(currentOutputFile);
     } catch (final Exception e) {
+      e.printStackTrace();
+      try{
+        recorder.release();
+      } catch (Exception ignored) { }
       logAndRejectPromise(promise, "COULDNT_PREPARE_RECORDING_AT_PATH "+recordingPath, e.getMessage());
     }
 
@@ -344,7 +343,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   }
 
   private void logAndRejectPromise(Promise promise, String errorCode, String errorMessage) {
-    Log.e(TAG, errorMessage);
+    Log.e(TAG, "[errorCode: \"" + errorCode + "\", message: \"" + errorMessage + "\"]");
     promise.reject(errorCode, errorMessage);
   }
 

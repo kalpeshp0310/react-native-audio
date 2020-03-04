@@ -7,19 +7,16 @@ public class AudioMeta {
 
   private int sampleRate;
   private int channel;
-  private int bitPerSecond;
 
   /**
    * Create an audio meta
    *
    * @param sampleRate audio sample rate
    * @param channel audio channel
-   * @param bitPerSecond audio data bit per second
    */
-  public AudioMeta(int sampleRate, int channel, int bitPerSecond) {
+  public AudioMeta(int sampleRate, int channel) {
     this.sampleRate = sampleRate;
     this.channel = channel;
-    this.bitPerSecond = bitPerSecond;
   }
 
   /**
@@ -45,17 +42,6 @@ public class AudioMeta {
   }
 
   /**
-   * Set number of bit per second
-   *
-   * @param bitPerSecond number of bit per second
-   * @return self object
-   */
-  public AudioMeta setBitPerSecond(int bitPerSecond) {
-    this.bitPerSecond = bitPerSecond;
-    return this;
-  }
-
-  /**
    * Get audio sample rate
    *
    * @return a sample rate
@@ -73,20 +59,10 @@ public class AudioMeta {
     return channel;
   }
 
-  /**
-   * Get audio bit per second value
-   *
-   * @return integer represent number of bit per second
-   */
-  public int getBitPerSecond() {
-    return bitPerSecond;
-  }
-
   @Override public String toString() {
     return "AudioMeta{" +
         "sampleRate=" + sampleRate +
         ", channel=" + channel +
-        ", bitPerSecond=" + bitPerSecond +
         '}';
   }
 }

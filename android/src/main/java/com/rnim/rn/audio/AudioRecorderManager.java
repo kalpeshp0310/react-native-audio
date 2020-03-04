@@ -15,7 +15,6 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
-import com.rnim.rn.audio.voice.android.RecordStrategy;
 import com.rnim.rn.audio.voice.android.VoiceRecorder;
 import com.rnim.rn.audio.voice.encoder.AudioMeta;
 import java.io.File;
@@ -38,7 +37,6 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
   private boolean isPaused = false;
   private Timer timer;
   private StopWatch stopWatch;
-  private RecordStrategy recordStrategy = new RecordStrategy();
   private AudioMeta audioMeta;
 
   public AudioRecorderManager(ReactApplicationContext reactContext) {
@@ -72,7 +70,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
       destFile.getParentFile().mkdirs();
     }
     audioMeta =
-        new AudioMeta(recordingSettings.getInt("SampleRate"), 1, 16);
+        new AudioMeta(recordingSettings.getInt("SampleRate"), 1);
 
     currentOutputFilePath = recordingPath;
     currentOutputFile = new File(currentOutputFilePath);
@@ -173,7 +171,7 @@ class AudioRecorderManager extends ReactContextBaseJavaModule {
     if (this.recorder != null) {
       this.recorder.stop();
     }
-    this.recorder = new VoiceRecorder(recordStrategy, audioMeta);
+    this.recorder = new VoiceRecorder(audioMeta);
     // internal com.rnim.rn.audio.voice recorder listeners
     VoiceRecorder.EventListener eventListener = new VoiceRecorder.EventListener() {
 

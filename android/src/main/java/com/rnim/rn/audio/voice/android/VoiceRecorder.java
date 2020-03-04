@@ -2,20 +2,22 @@ package com.rnim.rn.audio.voice.android;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.MediaCodec;
+import android.media.MediaFormat;
 import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
 import com.rnim.rn.audio.voice.encoder.AudioMeta;
-import com.rnim.rn.audio.voice.encoder.EncodingException;
-import com.rnim.rn.audio.voice.encoder.EncodingReady;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
  * This class represent an audio recorder. It record the speech into a wave format PCM 16 bit.
  * The recorder only record wave data if it detect any speech on the byte stream
  */
 
-public class VoiceRecorder implements EncodingReady {
+public class VoiceRecorder {
 
   private static final String TAG = "VoiceRecorder";
 
@@ -76,7 +78,6 @@ public class VoiceRecorder implements EncodingReady {
   //
   AudioMeta audioMeta;
   int sizeInBytes;
-  private RecordStrategy recordStrategy;
   //
   private HandlerThread thread;
   private final Object lock = new Object();
@@ -89,19 +90,8 @@ public class VoiceRecorder implements EncodingReady {
   /**
    * Create VoiceRecorder
    *
-   * @param recordStrategy a strategy to record the audio
    */
-  public VoiceRecorder(RecordStrategy recordStrategy) {
-    this(recordStrategy, new AudioMeta(0, 2, 16));
-  }
-
-  /**
-   * Create VoiceRecorder
-   *
-   * @param recordStrategy a strategy to record the audio
-   */
-  public VoiceRecorder(RecordStrategy recordStrategy, AudioMeta audioMeta) {
-    this.recordStrategy = recordStrategy;
+  public VoiceRecorder(AudioMeta audioMeta) {
     this.audioMeta = audioMeta;
   }
 
@@ -125,14 +115,22 @@ public class VoiceRecorder implements EncodingReady {
     // Start recording.
     audioRecord.startRecording();
     // assign the callback
-    recordStrategy.getEncoder().setEncodingReady(this);
     // Start processing the captured audio.
     thread = new HandlerThread("read-audio-buffer");
     Log.d(TAG, "start audio recorder");
     thread.start();
     Handler handler = new Handler(thread.getLooper());
-    TransferFromAudioRecorder readAudioBuffer = new TransferFromAudioRecorder();
-    handler.post(readAudioBuffer);
+    try {
+      TransferFromAudioRecorder readAudioBuffer;
+      final MediaFormat format =
+          MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_FLAC, getSampleRate(),
+              audioMeta.getChannel());
+      format.setInteger(MediaFormat.KEY_FLAC_COMPRESSION_LEVEL, 5);
+      readAudioBuffer = new TransferFromAudioRecorder(format);
+      handler.post(readAudioBuffer);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
   }
 
   /**
@@ -140,16 +138,18 @@ public class VoiceRecorder implements EncodingReady {
    */
   public void stop() {
     synchronized (lock) {
-      if (thread != null) {
-        stop = true;
-        thread.quit();
-        thread = null;
+      if (stop) {
+        if (thread != null) {
+          thread.quit();
+          thread = null;
+        }
+        if (audioRecord != null) {
+          audioRecord.stop();
+          audioRecord.release();
+          audioRecord = null;
+        }
       }
-      if (audioRecord != null) {
-        audioRecord.stop();
-        audioRecord.release();
-        audioRecord = null;
-      }
+      stop = true;
       Log.d(TAG, "stop audio recorder");
     }
   }
@@ -189,54 +189,95 @@ public class VoiceRecorder implements EncodingReady {
   }
 
   /**
-   * {@inheritDoc}
-   */
-  @Override
-  public void onEncoded(byte[] buffer, int size) {
-    eventListener.onRecording(buffer, size);
-  }
-
-  /**
    * Continuously processes the captured audio and notifies {@link #eventListener} of corresponding
    * events.
    */
   private class TransferFromAudioRecorder implements Runnable {
 
-    private boolean onRecording(byte[] buffer, int size) {
-      try {
-        recordStrategy.getEncoder().encode(buffer, size);
-        return false;
-      } catch (EncodingException e) {
-        e.printStackTrace();
-        eventListener.onRecordError(e);
-        return true;
-      }
+    MediaCodec.BufferInfo mInfo = new MediaCodec.BufferInfo();
+    boolean mSawOutputEOS;
+    boolean mSawInputEOS;
+    private MediaCodec mCodec;
+    // result stream
+    private byte[] mBuf = null;
+    private int mBufCounter = 0;
+
+    TransferFromAudioRecorder(MediaFormat format) throws IOException {
+      String mime = format.getString(MediaFormat.KEY_MIME);
+      mCodec = MediaCodec.createEncoderByType(mime);
+      mCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+      mCodec.start();
+    }
+
+    private void onRecording(byte[] buffer, int size) {
+      eventListener.onRecording(buffer, size);
     }
 
     @Override
     public void run() {
       Log.d(TAG, "read from audio record buffer");
-      byte[] buffer = new byte[sizeInBytes];
-      while (true) {
+      while (!mSawInputEOS) {
+        mSawInputEOS = stop;
         synchronized (lock) {
-          if (stop) {
-            endRecording(RECORD_END_BY_USER);
-            return;
-          }
-          final int size = audioRecord.read(buffer, 0, buffer.length);
-          if (size > 0 && !stop) {
-            final long now = System.currentTimeMillis();
-            if (voiceHeardMillis == Long.MAX_VALUE) {
-              eventListener.onRecordStart(audioMeta);
-              recordStrategy.getEncoder().initialize(audioMeta);
+          Log.i(TAG, "sending data to " + mCodec.getName());
+          int index = mCodec.dequeueInputBuffer(5000);
+          if (index < 0) {
+            // no input buffer currently available
+            continue;
+          } else {
+            ByteBuffer buf = mCodec.getInputBuffer(index);
+            buf.clear();
+            int inBufLen = buf.limit();
+            long timestampUs = 0; // non-zero for MediaExtractor mode
+            if (mBuf == null) {
+              mBuf = new byte[inBufLen];
             }
-            // if there is an exception occurs
-            if (onRecording(buffer, size)) {
-              end();
-              endRecording(RECORD_END_BY_INTERRUPTED);
-              return;
+            final int size = audioRecord.read(mBuf, 0, mBuf.length);
+            buf.put(mBuf, 0, size);
+            int flags = mSawInputEOS ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0;
+            Log.i(TAG, "queuing input buffer " + index +
+                ", size " + size + ", flags: " + flags +
+                " on " + mCodec.getName());
+            mCodec.queueInputBuffer(index,
+                0 /* offset */,
+                size,
+                timestampUs /* presentationTimeUs */,
+                flags);
+            Log.i(TAG, "queued input buffer " + index + ", size " + size);
+
+            index = mCodec.dequeueOutputBuffer(mInfo, 5000);
+            if (index >= 0) {
+              Log.i(TAG, "got " + mInfo.size + " bytes from " + mCodec.getName());
+              ByteBuffer out = mCodec.getOutputBuffer(index);
+              ByteBuffer ret = ByteBuffer.allocate(mInfo.size);
+              ret.put(out);
+              mCodec.releaseOutputBuffer(index, false /* render */);
+              if ((mInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                Log.i(TAG, "saw output EOS on " + mCodec.getName());
+                mSawOutputEOS = true;
+              }
+              ret.flip(); // prepare buffer for reading from it
+              // XXX chck that first encoded buffer has CSD flags set
+              if (mBufCounter++ == 0
+                  && (mInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                Log.e(TAG, "first encoded buffer missing CSD flag");
+              }
+              final long now = System.currentTimeMillis();
+              if (voiceHeardMillis == Long.MAX_VALUE) {
+                eventListener.onRecordStart(audioMeta);
+              }
+              voiceHeardMillis = now;
+              if (size > 0) {
+                // if there is an exception occurs
+                final byte[] array = ret.array();
+                onRecording(array, array.length);
+              }
+              if (mSawOutputEOS) {
+                end();
+                endRecording(RECORD_END_BY_USER);
+                break;
+              }
             }
-            voiceHeardMillis = now;
           }
         }
       }
@@ -245,7 +286,13 @@ public class VoiceRecorder implements EncodingReady {
     private void endRecording(byte state) {
       if (voiceHeardMillis != Long.MAX_VALUE) {
         voiceHeardMillis = Long.MAX_VALUE;
-        recordStrategy.getEncoder().release();
+      }
+      try {
+        if (mCodec != null) {
+          mCodec.release();
+        }
+      } finally {
+        mCodec = null;
       }
       eventListener.onRecordEnd(state);
     }
